@@ -1,0 +1,9 @@
+{"id":"q1","query":"为什么 scaled dot-product attention 要除以 key 维度的平方根？","relevant":[{"filename":"attention_basics.md","page":1}]}
+{"id":"q2","query":"What components are normally used in a Transformer block?","relevant":[{"filename":"attention_basics.md","page":1}]}
+{"id":"q3","query":"RAG 文本块太大或太小分别有什么问题？","relevant":[{"filename":"rag_notes.md","page":1}]}
+{"id":"q4","query":"如何防御检索资料中的提示注入？","relevant":[{"filename":"rag_notes.md","page":1}]}
+{"id":"q5","query":"Recall@k 和 MRR 的区别是什么？","relevant":[{"filename":"evaluation_notes.md","page":1}]}
+{"id":"q6","query":"How many questions should a small practical evaluation set contain?","relevant":[{"filename":"evaluation_notes.md","page":1}]}
+{"id":"q7","query":"这套资料推荐哪一种 GPU？","relevant":[]}
+{"id":"q8","query":"作者在哪家公司任职？","relevant":[]}
+

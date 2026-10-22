@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "techlit-assistant"
+version = "0.1.0"
+description = "A small, inspectable RAG assistant for technical papers."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26,<3",
+  "openai>=2,<3",
+  "pypdf>=5,<7",
+  "python-dotenv>=1,<2",
+  "scikit-learn>=1.5,<2",
+  "streamlit>=1.40,<2",
+]
+
+[project.optional-dependencies]
+local = [
+  "torch>=2.2,<3",
+  "transformers>=4.40,<5",
+  "sentencepiece>=0.2,<1",
+]
+dev = [
+  "pytest>=8,<10",
+  "ruff>=0.8,<1",
+]
+
+[project.scripts]
+techlit-eval = "techlit_assistant.evaluation:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q --basetemp=work/pytest"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+cache-dir = "work/.ruff_cache"
+

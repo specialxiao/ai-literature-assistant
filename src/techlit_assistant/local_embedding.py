@@ -187,7 +187,7 @@ def main() -> None:
             _load_cpu_model(str(settings.local_model_path))
     except Exception as exc:  # Actionable CLI boundary; preserve partial files for inspection.
         raise SystemExit(
-            f"模型准备失败：{exc}\n请检查网络/依赖后重试，或复制完整模型目录（README 4.2）。"
+            f"模型准备失败：{exc}\n请检查网络/依赖后重试，或参阅 README 的“本地语义检索”。"
         ) from exc
     print("本地模型已就绪。后续向量推理无需联网，也不需要 API Key。", flush=True)
 

@@ -141,7 +141,9 @@ with st.sidebar:
     if SETTINGS.embedding_provider == "local":
         st.caption("向量：multilingual-e5-small\n\n运行：本地 CPU · 中英文 · 384 维")
         if not (SETTINGS.local_model_path / "model.safetensors").is_file():
-            st.warning("本地模型尚未下载，自动模式暂退回 BM25。请按 README 4.2 完成安装和下载。")
+            st.warning(
+                "本地模型尚未下载，自动模式暂退回 BM25。请按 README 的“本地语义检索”完成安装和下载。"
+            )
         st.caption("首次语义检索需要加载模型并建立向量索引，可能较慢；后续复用缓存。")
     elif SETTINGS.embedding.configured:
         st.caption(f"向量：{SETTINGS.embedding.model}\n\n端点：{SETTINGS.embedding.display_name}")

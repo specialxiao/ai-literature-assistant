@@ -1,0 +1,11 @@
+# Contrastive Training for Retrieval Embeddings
+
+A retrieval embedding model maps queries and passages into vectors whose geometry should reflect relevance. A bi-encoder encodes each side separately, allowing passage vectors to be cached before any user query arrives. A cross-encoder instead processes a query-passage pair jointly and is often used to rerank a smaller candidate set. Cross-encoder relevance scores are not directly reusable as standalone passage embeddings.
+
+Contrastive training presents a query, a positive passage, and negative passages. A common loss treats the positive passage as the correct class among candidates and applies cross entropy to similarity logits. With normalized embeddings and a temperature tau, the logits can be cosine similarities divided by tau. Lowering the temperature sharpens the candidate distribution; it does not change the number of training examples by itself.
+
+In-batch negatives reuse other passages in the batch as negative candidates. This makes candidate construction efficient, but it introduces false-negative risk. A passage paired with another query may also answer the current query. Penalizing such a passage can teach an undesirable distinction. Duplicate passages, paraphrased questions, and overlapping technical references make this issue especially relevant in document retrieval.
+
+Hard negatives are incorrect passages that the current system finds deceptively relevant. They can teach distinctions that random negatives rarely expose, such as a passage explaining precision when the question asks about recall. They require verification: a near neighbor is not necessarily irrelevant, and an incorrectly labeled hard negative can directly damage useful similarity relationships.
+
+Training and inference preprocessing must align. If a model was trained with different textual prefixes for queries and passages, removing those prefixes changes its input distribution. Normalization conventions and pooling rules also affect the resulting vectors. A high cosine similarity is not automatically a calibrated relevance probability. Cross-language retrieval needs training signals that align languages; merely accepting Unicode text does not establish that a model supports meaningful bilingual matching.

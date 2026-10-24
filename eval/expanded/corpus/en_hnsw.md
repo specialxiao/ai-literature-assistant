@@ -1,0 +1,11 @@
+# Approximate Nearest Neighbors with HNSW
+
+Vector retrieval ranks items by a similarity or distance function between embeddings. Exact search compares a query with every stored vector, which provides an exact result under the chosen metric but grows in work with collection size. Approximate nearest-neighbor search trades some exact-neighbor recall for lower search cost. Approximate retrieval is not inherently more semantically meaningful than exact search; both depend on the representation and metric.
+
+Hierarchical navigable small world, abbreviated HNSW, organizes vectors as a multilayer proximity graph. Upper layers are sparse navigation structures, while the bottom layer contains all indexed items. Search begins from an entry point, navigates through upper layers, and explores candidates more broadly near the bottom. Graph connectivity and exploration settings govern the quality-cost tradeoff.
+
+The parameter M limits the target number of graph connections per item under the implementation's construction rules. Raising M generally increases graph memory and construction work, and can improve connectivity. The construction parameter efConstruction controls candidate exploration while building the graph. It is distinct from efSearch, which controls exploration when answering a query. Increasing efSearch usually improves exact-neighbor recall at the cost of more query work; it does not retrain the embedding model.
+
+An ANN recall test compares approximate results with exact nearest neighbors from the same vectors and metric. This measures index approximation error. A relevance test instead checks whether retrieved passages answer a human information need. Excellent ANN recall cannot compensate for embeddings that place irrelevant passages close to the query.
+
+Metric choice must remain consistent across indexing and querying. For unit-normalized vectors, cosine similarity and inner product induce the same ranking. Without normalization, large vector norms can change inner-product rankings. Filtering, deletion handling, and graph maintenance depend on the chosen implementation, so their correctness and latency should be tested separately rather than assumed from the HNSW algorithm name.

@@ -49,6 +49,19 @@ def test_local_cache_isolated_by_path_and_preprocessing(tmp_path, monkeypatch):
     assert first.cache_model_key != original
 
 
+def test_local_model_profiles_do_not_share_prefix_or_cache(tmp_path, monkeypatch):
+    e5 = LocalE5Embedder(tmp_path)
+    minilm = LocalE5Embedder(tmp_path, "minilm")
+    assert e5.cache_model_key != minilm.cache_model_key
+    assert minilm.max_tokens == 128
+    assert minilm.overlap == 32
+    calls = []
+    monkeypatch.setattr(minilm, "_encode", lambda texts, prefix: calls.append(prefix) or [[1.0]])
+    minilm.embed_documents(["document"])
+    minilm.embed_query("question")
+    assert calls == ["", ""]
+
+
 def test_high_confidence_bm25_does_not_load_local_model(tmp_path, monkeypatch):
     repository = Repository(tmp_path / "test.db")
     ingest_bytes(repository, "rag.md", b"RAG retrieves relevant evidence.")

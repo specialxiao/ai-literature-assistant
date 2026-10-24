@@ -8,7 +8,7 @@
 
 - 导入文本型 PDF、Markdown 和 TXT，自动去重并保留页码。
 - 支持 BM25、TF-IDF、本地语义向量及兼容 API 检索。
-- 自动模式先使用 BM25，结果置信度不足时结合语义检索，以 RRF 融合排名；语义模型不可用时退回 BM25。
+- 自动模式先使用 BM25，必要时结合语义检索与 RRF；词法匹配过弱时优先语义结果，证据不足时返回空，模型故障时退回 BM25。
 - 支持 DeepSeek 等模型生成回答，附带可核对的原文引用。
 - 文档与向量缓存在本地保存，提供检索评测工具。
 
@@ -40,7 +40,7 @@ TECHLIT_LLM_API_MODE=responses
 
 ## 本地语义检索
 
-使用 `intfloat/multilingual-e5-small`，支持中英文及跨语言检索，输出 384 维向量，可在 CPU 上运行，无需向量 API Key。
+推荐使用 [paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)，支持中英文及跨语言检索，输出 384 维向量，可在 CPU 上运行，无需向量 API Key。
 
 安装依赖并下载模型：
 
@@ -53,10 +53,14 @@ TECHLIT_LLM_API_MODE=responses
 
 ```dotenv
 TECHLIT_EMBEDDING_PROVIDER=local
-TECHLIT_LOCAL_MODEL_PATH=data/models/multilingual-e5-small
+TECHLIT_LOCAL_MODEL=minilm
+TECHLIT_LOCAL_MODEL_PATH=data/models/paraphrase-multilingual-MiniLM-L12-v2
+TECHLIT_LOCAL_MIN_SCORE=0.35
 ```
 
 重启后选择“自动（推荐）”或“语义向量（本地 / API）”。模型权重约 470 MB，首次下载需要联网，后续向量推理离线运行；首次检索加载和建立索引会稍慢。
+
+MiniLM 按 128-token 窗口处理长文本。阈值 0.35 来自内置开发集，并非通用概率；更换资料后建议重新评测。旧 E5 模型仍可配置使用。
 
 也可将 `TECHLIT_EMBEDDING_PROVIDER` 设为 `api`，并填写 `TECHLIT_EMBEDDING_API_KEY`、`TECHLIT_EMBEDDING_BASE_URL` 和 `TECHLIT_EMBEDDING_MODEL`，使用独立的向量服务。
 
@@ -68,6 +72,8 @@ TECHLIT_LOCAL_MODEL_PATH=data/models/multilingual-e5-small
 ```
 
 评测输出 Recall@k、MRR、无答案无命中率和检索延迟，默认使用独立的 `data/evaluation.db`，不修改应用资料库。评测方法见 [docs/evaluation.md](docs/evaluation.md)。
+
+另提供 [100 题中英文扩展评测集](eval/expanded/README.md)，可运行 `.\.venv\Scripts\python.exe scripts/evaluate_expanded.py` 对比四种检索模式，并查看分组及逐题结果。
 
 ## 使用限制
 

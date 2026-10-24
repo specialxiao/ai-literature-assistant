@@ -10,10 +10,12 @@ def build_semantic_retriever(
 ) -> EmbeddingRetriever | None:
     if (provider or settings.embedding_provider) == "local":
         # Importing this module does not load torch, instantiate or download a model.
-        from .local_embedding import LocalE5Embedder
+        from .local_embedding import LocalEmbedder
 
         return EmbeddingRetriever(
-            repository, LocalE5Embedder(settings.local_model_path), settings.local_min_score
+            repository,
+            LocalEmbedder(settings.local_model_path, settings.local_model_name),
+            settings.local_min_score,
         )
     if not settings.embedding.configured:
         return None

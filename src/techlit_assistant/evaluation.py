@@ -49,7 +49,9 @@ def load_questions(path: Path) -> list[dict]:
     return items
 
 
-def evaluate_retrieval(retriever, questions: list[dict], top_k: int = 5) -> EvaluationMetrics:
+def evaluate_retrieval(
+    retriever, questions: list[dict], top_k: int = 5, *, details: list[dict] | None = None
+) -> EvaluationMetrics:
     reciprocal_ranks: list[float] = []
     recalls: list[float] = []
     unanswerable_no_hits: list[float] = []
@@ -72,15 +74,40 @@ def evaluate_retrieval(retriever, questions: list[dict], top_k: int = 5) -> Eval
                 api_queries += 1
         latencies.append((time.perf_counter() - started) * 1000)
         relevant = {(source["filename"], int(source["page"])) for source in item["relevant"]}
-        if not relevant:
-            unanswerable_no_hits.append(float(not hits))
-            continue
-
         ranks = [
             rank
             for rank, hit in enumerate(hits, start=1)
             if (hit.chunk.filename, hit.chunk.page) in relevant
         ]
+        if details is not None:
+            details.append(
+                {
+                    "id": item.get("id"),
+                    "query": item["query"],
+                    "category": item.get("category", "unspecified"),
+                    "split": item.get("split", "unspecified"),
+                    "answerable": bool(relevant),
+                    "first_relevant_rank": min(ranks) if ranks else None,
+                    "evidence_text_hit": bool(item.get("evidence"))
+                    and any(item["evidence"] in hit.chunk.text for hit in hits),
+                    "latency_ms": latencies[-1],
+                    "strategy": trace.strategy if trace else type(retriever).__name__,
+                    "fallback": bool(trace and trace.strategy == "bm25_fallback"),
+                    "hits": [
+                        {
+                            "filename": hit.chunk.filename,
+                            "page": hit.chunk.page,
+                            "chunk_id": hit.chunk.id,
+                            "score": hit.score,
+                        }
+                        for hit in hits
+                    ],
+                }
+            )
+        if not relevant:
+            unanswerable_no_hits.append(float(not hits))
+            continue
+
         recalls.append(float(bool(ranks)))
         reciprocal_ranks.append(1.0 / min(ranks) if ranks else 0.0)
 

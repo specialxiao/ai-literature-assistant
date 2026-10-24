@@ -89,6 +89,8 @@ def render_retrieval_trace(trace: RetrievalTrace) -> None:
         "bm25": "BM25（高置信度，未运行语义模型）",
         "rrf": "BM25 + 语义向量（RRF 融合）",
         "bm25_fallback": "BM25（语义向量不可用时自动降级）",
+        "semantic": "语义检索（词法匹配较弱，不强行融合）",
+        "no_evidence": "证据不足（未通过语义阈值）",
     }
     reason_labels = {
         "high_coverage": "词法覆盖充分",
@@ -96,6 +98,8 @@ def render_retrieval_trace(trace: RetrievalTrace) -> None:
         "low_coverage": "词法覆盖不足",
         "score_tie": "头部结果区分度不足",
         "no_lexical_hit": "没有词法命中",
+        "weak_lexical_match": "词法覆盖不足或未登录词较多",
+        "semantic_below_threshold": "语义结果未达到接受阈值",
     }
     base_reason = trace.reason.split(":")[-1]
     st.caption(
@@ -139,7 +143,13 @@ with st.sidebar:
             f"模式：{SETTINGS.llm.api_mode}"
         )
     if SETTINGS.embedding_provider == "local":
-        st.caption("向量：multilingual-e5-small\n\n运行：本地 CPU · 中英文 · 384 维")
+        model_label = (
+            "paraphrase-multilingual-MiniLM-L12-v2"
+            if SETTINGS.local_model_name == "minilm"
+            else "multilingual-e5-small"
+        )
+        st.caption(f"向量：{model_label}\n\n运行：本地 CPU · 中英文 · 384 维")
+        st.caption(f"语义接受阈值：{SETTINGS.local_min_score:g}（非相关概率）")
         if not (SETTINGS.local_model_path / "model.safetensors").is_file():
             st.warning(
                 "本地模型尚未下载，自动模式暂退回 BM25。请按 README 的“本地语义检索”完成安装和下载。"

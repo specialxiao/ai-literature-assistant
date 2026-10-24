@@ -5,6 +5,7 @@ import pytest
 from techlit_assistant.config import Settings
 
 ENV_NAMES = [
+    "TECHLIT_LOCAL_MODEL",
     "TECHLIT_EMBEDDING_PROVIDER",
     "TECHLIT_LOCAL_MODEL_PATH",
     "TECHLIT_LOCAL_MIN_SCORE",
@@ -105,6 +106,20 @@ def test_local_embedding_configuration(tmp_path: Path, monkeypatch):
     assert settings.local_model_path == tmp_path / "data/models/multilingual-e5-small"
     assert settings.local_min_score == 0
     assert not settings.embedding.configured  # No API credentials are needed.
+
+
+def test_minilm_profile_has_its_own_path_and_default_threshold(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECHLIT_LOCAL_MODEL", "minilm")
+    settings = Settings.from_env(tmp_path)
+    assert settings.local_model_name == "minilm"
+    assert settings.local_model_path.name == "paraphrase-multilingual-MiniLM-L12-v2"
+    assert settings.local_min_score == 0.35
+
+
+def test_unknown_local_model_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECHLIT_LOCAL_MODEL", "unknown")
+    with pytest.raises(ValueError, match="e5 或 minilm"):
+        Settings.from_env(tmp_path)
 
 
 @pytest.mark.parametrize("value", ["nan", "inf", "-2", "invalid"])

@@ -76,6 +76,7 @@ class Settings:
     embedding_provider: str = "api"
     local_model_path: Path = Path("data/models/multilingual-e5-small")
     local_min_score: float = 0.0
+    local_model_name: str = "e5"
 
     @classmethod
     def from_env(cls, project_root: Path | None = None) -> Settings:
@@ -86,12 +87,23 @@ class Settings:
         provider = _first_env("TECHLIT_EMBEDDING_PROVIDER") or "api"
         if provider not in {"local", "api"}:
             raise ValueError("TECHLIT_EMBEDDING_PROVIDER 必须是 local 或 api")
+        local_model_name = _first_env("TECHLIT_LOCAL_MODEL") or "e5"
+        if local_model_name not in {"e5", "minilm"}:
+            raise ValueError("TECHLIT_LOCAL_MODEL 必须是 e5 或 minilm")
         model_path = Path(
-            _first_env("TECHLIT_LOCAL_MODEL_PATH") or "data/models/multilingual-e5-small"
+            _first_env("TECHLIT_LOCAL_MODEL_PATH")
+            or (
+                "data/models/paraphrase-multilingual-MiniLM-L12-v2"
+                if local_model_name == "minilm"
+                else "data/models/multilingual-e5-small"
+            )
         )
         model_path = model_path if model_path.is_absolute() else root / model_path
         try:
-            local_min_score = float(_first_env("TECHLIT_LOCAL_MIN_SCORE") or "0")
+            local_min_score = float(
+                _first_env("TECHLIT_LOCAL_MIN_SCORE")
+                or ("0.35" if local_model_name == "minilm" else "0")
+            )
         except ValueError as exc:
             raise ValueError("TECHLIT_LOCAL_MIN_SCORE 必须是 -1 到 1 之间的数") from exc
         if not -1 <= local_min_score <= 1:
@@ -173,4 +185,5 @@ class Settings:
             embedding_provider=provider,
             local_model_path=model_path,
             local_min_score=local_min_score,
+            local_model_name=local_model_name,
         )

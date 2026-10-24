@@ -195,24 +195,21 @@ class BM25Retriever:
         weights = {token: idf.get(token, maximum_idf) for token in meaningful}
         total_weight = max(sum(weights.values()), 1e-12)
 
-        top_three_tokens: set[str] = set()
-        for index in ranked[:3]:
-            top_three_tokens.update(tokenized_corpus[index])
+        top_tokens = set(tokenized_corpus[ranked[0]])
         coverage = (
-            sum(weight for token, weight in weights.items() if token in top_three_tokens)
-            / total_weight
+            sum(weight for token, weight in weights.items() if token in top_tokens) / total_weight
         )
         oov_ratio = sum(token not in idf for token in meaningful) / len(meaningful)
 
         top_score = scores[ranked[0]]
         second_score = scores[ranked[1]] if len(ranked) > 1 else 0.0
         relative_gap = (top_score - second_score) / max(top_score, 1e-12)
-        top_tokens = set(tokenized_corpus[ranked[0]])
         short_exact_query = len(meaningful) <= 4 and all(
             token in top_tokens for token in meaningful
         )
-        selective_match = bool(SELECTIVE_QUERY_RE.search(query)) and any(
-            token in top_tokens for token in meaningful
+        selective_match = any(
+            bool(selected := tokenize_mixed(match.group(0))) and set(selected) <= top_tokens
+            for match in SELECTIVE_QUERY_RE.finditer(query)
         )
 
         high_confidence = (
@@ -343,11 +340,37 @@ class EmbeddingRetriever:
         denominator = np.maximum(row_norms * query_norm, 1e-12)
         scores = (matrix @ query_vector) / denominator
         ranked = np.argsort(scores)[::-1]
-        return [
+        candidates = [
             SearchHit(chunk=chunks[index], score=float(scores[index]))
-            for index in ranked[:top_k]
+            for index in ranked
             if scores[index] >= self.min_score
         ]
+        return diversify_hits(candidates, top_k)
+
+
+def diversify_hits(
+    hits: Sequence[SearchHit], top_k: int, max_per_source: int = 2
+) -> list[SearchHit]:
+    """Prefer source-page breadth without discarding long-page evidence when needed."""
+    if top_k <= 0:
+        return []
+    selected: list[SearchHit] = []
+    deferred: list[SearchHit] = []
+    counts: Counter[tuple[str, int]] = Counter()
+    seen: set[str] = set()
+    for hit in hits:
+        if hit.chunk.id in seen:
+            continue
+        seen.add(hit.chunk.id)
+        source = (hit.chunk.document_id, hit.chunk.page)
+        if counts[source] < max_per_source:
+            selected.append(hit)
+            counts[source] += 1
+        else:
+            deferred.append(hit)
+        if len(selected) >= top_k:
+            break
+    return (selected + deferred[: max(0, top_k - len(selected))])[:top_k]
 
 
 def reciprocal_rank_fusion(
@@ -436,13 +459,34 @@ class AutoRetriever:
             )
             return lexical_hits[:top_k]
 
+        if not semantic_hits:
+            self.last_trace = RetrievalTrace(
+                strategy="no_evidence",
+                reason="semantic_below_threshold",
+                used_embedding=True,
+                lexical=diagnostics,
+            )
+            return []
+
+        if diagnostics.idf_coverage < 0.35 or diagnostics.oov_ratio > 0.60:
+            self.last_trace = RetrievalTrace(
+                strategy="semantic",
+                reason="weak_lexical_match",
+                used_embedding=True,
+                lexical=diagnostics,
+            )
+            return diversify_hits(semantic_hits, top_k)
+
         self.last_trace = RetrievalTrace(
             strategy="rrf",
             reason=diagnostics.reason,
             used_embedding=True,
             lexical=diagnostics,
         )
-        return reciprocal_rank_fusion([lexical_hits, semantic_hits], top_k=top_k)
+        fused = reciprocal_rank_fusion(
+            [lexical_hits, semantic_hits], top_k=len(lexical_hits) + len(semantic_hits)
+        )
+        return diversify_hits(fused, top_k)
 
 
 # Compatibility alias for code written against v0.1.

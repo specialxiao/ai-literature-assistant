@@ -33,3 +33,34 @@ def test_legacy_openai_cli_mode_remains_available():
 def test_evaluation_defaults_to_separate_database():
     args = build_parser().parse_args(["--questions", "questions.jsonl", "--mode", "local"])
     assert args.database == Path("data/evaluation.db")
+
+
+def test_evaluation_records_query_level_failures_without_retrieval_changes(tmp_path):
+    repository = Repository(tmp_path / "test.db")
+    ingest_bytes(repository, "rag.md", b"retrieval provides external evidence")
+    questions = [
+        {
+            "id": "positive",
+            "query": "external evidence",
+            "category": "en_to_en",
+            "split": "test",
+            "relevant": [{"filename": "rag.md", "page": 1}],
+            "evidence": "external evidence",
+        },
+        {
+            "id": "negative",
+            "query": "quantum banana spaceship",
+            "category": "unanswerable",
+            "split": "test",
+            "relevant": [],
+            "evidence": "",
+        },
+    ]
+    details = []
+    metrics = evaluate_retrieval(TfidfRetriever(repository), questions, details=details)
+    assert metrics.recall_at_k == 1
+    assert len(details) == 2
+    assert details[0]["first_relevant_rank"] == 1
+    assert details[0]["evidence_text_hit"]
+    assert details[1]["first_relevant_rank"] is None
+    assert details[1]["hits"] == []

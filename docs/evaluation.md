@@ -1,5 +1,11 @@
 # 评测方案
 
+## 内置扩展集
+
+除了原来的 8 题冒烟集，新增 [100 题扩展集](../eval/expanded/README.md)：20 篇原创中英文技术笔记、80 道可回答题、20 道无答案题，中英四种检索方向各 20 道。运行 `python scripts/evaluate_expanded.py` 获取四种检索器的整体、语言分组和逐题结果。所有数据为合成资料，不代替真实论文评测。
+
+本地模型及拒检阈值使用 `python scripts/tune_retrieval.py` 在 dev 子集选择；当前 MiniLM 阈值为 0.35。新旧系统的 [对比报告](../eval/expanded/improvements.md) 同时给出 test 子集与无答案结果，不能只报告整体召回率。
+
 ## 1. 检索评测
 
 用 3–5 篇与你目标岗位相关的公开论文，人工写 20–30 个问题。每题标注一个或多个 `(filename, page)`，并保留至少 5 个资料中无法回答的问题。

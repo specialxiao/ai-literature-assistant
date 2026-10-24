@@ -1,4 +1,4 @@
-"""Optional, CPU-only E5 encoder. Inference never downloads model files."""
+"""Optional CPU-only multilingual encoders. Inference never downloads model files."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import numpy as np
 
 MODEL_ID = "intfloat/multilingual-e5-small"
 MODEL_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
-PREPROCESS_VERSION = "e5-prefix-mean-windows-v1"
+PREPROCESS_VERSION = "joint-prefix-boundaries-mean-windows-v3"
 MAX_TOKENS = 512
 OVERLAP = 64
 _LOAD_LOCK = Lock()
@@ -27,6 +27,17 @@ MODEL_FILES = {
     "special_tokens_map.json": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
     "sentencepiece.bpe.model": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
 }
+MINILM_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+MINILM_REVISION = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+MINILM_FILES = {
+    "config.json": "6300193cb75e01cf80c96decef7187dfb33094d97cc1490b7ead6ff134476e4e",
+    "model.safetensors": "eaa086f0ffee582aeb45b36e34cdd1fe2d6de2bef61f8a559a1bbc9bd955917b",
+    "tokenizer.json": "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
+    "tokenizer_config.json": "5036ea374ffedd706e3bef33e2e0d6953cb868ef8a490e76e32ba0faa37a6b9b",
+    "special_tokens_map.json": "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d",
+    "sentencepiece.bpe.model": MODEL_FILES["sentencepiece.bpe.model"],
+    "sentence_bert_config.json": "70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f",
+}
 
 
 def _file_sha256(path: Path) -> str:
@@ -37,16 +48,19 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def download_model(directory: Path) -> None:
+def download_model(directory: Path, model_name: str = "e5") -> None:
     """Use verified official HTTPS GETs, including behind HEAD-incompatible proxies."""
     directory.mkdir(parents=True, exist_ok=True)
-    for filename, expected_hash in MODEL_FILES.items():
+    files = MINILM_FILES if model_name == "minilm" else MODEL_FILES
+    model_id = MINILM_ID if model_name == "minilm" else MODEL_ID
+    revision = MINILM_REVISION if model_name == "minilm" else MODEL_REVISION
+    for filename, expected_hash in files.items():
         target = directory / filename
         if target.is_file() and _file_sha256(target) == expected_hash:
             print(f"Verified cached {filename}", flush=True)
             continue
         print(f"Downloading {filename} ...", flush=True)
-        url = f"https://huggingface.co/{MODEL_ID}/resolve/{MODEL_REVISION}/{filename}"
+        url = f"https://huggingface.co/{model_id}/resolve/{revision}/{filename}"
         partial = target.with_suffix(target.suffix + ".part")
         with urlopen(url, timeout=60) as response, partial.open("wb") as handle:
             for block in iter(lambda: response.read(1024 * 1024), b""):
@@ -93,20 +107,25 @@ def _load_cpu_model(model_path: str):
         .eval()
     )
     if model.config.hidden_size != 384:
-        raise ValueError("本地模型目录必须是 multilingual-e5-small（384 维）")
+        raise ValueError("本地模型必须输出 384 维向量，请检查模型目录与配置")
     return tokenizer, model
 
 
-class LocalE5Embedder:
+class LocalEmbedder:
     """One cached unit vector per original chunk, averaging its token windows.
 
     Windows avoid silently discarding long chunks' tails. Averaging is a small-MVP
     compromise: it can dilute a short relevant passage in a very long chunk.
     """
 
-    def __init__(self, model_path: Path):
+    def __init__(self, model_path: Path, model_name: str = "e5"):
+        if model_name not in {"e5", "minilm"}:
+            raise ValueError("Local model must be e5 or minilm")
         self.model_path = model_path.resolve()
-        self.model = MODEL_ID
+        self.model_name = model_name
+        self.model = MINILM_ID if model_name == "minilm" else MODEL_ID
+        self.max_tokens = 128 if model_name == "minilm" else MAX_TOKENS
+        self.overlap = 32 if model_name == "minilm" else OVERLAP
 
     @property
     def cache_model_key(self) -> str:
@@ -125,38 +144,56 @@ class LocalE5Embedder:
         fingerprint = sha256(json.dumps([str(self.model_path), artifacts]).encode()).hexdigest()[
             :16
         ]
-        return f"local:{MODEL_ID}@{MODEL_REVISION}:{PREPROCESS_VERSION}:{fingerprint}"
+        revision = MINILM_REVISION if self.model_name == "minilm" else MODEL_REVISION
+        return (
+            f"local:{self.model}@{revision}:{PREPROCESS_VERSION}:"
+            f"w{self.max_tokens}:o{self.overlap}:{fingerprint}"
+        )
 
     @property
     def cache_dimensions(self) -> int:
         return 384
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        return self._encode(texts, "passage: ")
+        return self._encode(texts, "" if self.model_name == "minilm" else "passage: ")
 
     def embed_query(self, text: str) -> list[float]:
-        return self._encode([text], "query: ")[0]
+        return self._encode([text], "" if self.model_name == "minilm" else "query: ")[0]
 
     def _encode(self, texts: Sequence[str], prefix: str, batch_size: int = 8) -> list[list[float]]:
         if not texts:
             return []
+        config_path = self.model_path / "config.json"
+        expected = MINILM_FILES if self.model_name == "minilm" else MODEL_FILES
+        if config_path.is_file() and _file_sha256(config_path) != expected["config.json"]:
+            raise ValueError("本地模型目录与 TECHLIT_LOCAL_MODEL 不匹配，请检查配置或重新下载")
         with _LOAD_LOCK:
             tokenizer, model = _load_cpu_model(str(self.model_path))
         import torch
 
-        prefix_ids = tokenizer.encode(prefix, add_special_tokens=False)
-        capacity = MAX_TOKENS - len(prefix_ids) - tokenizer.num_special_tokens_to_add(False)
+        prefix_ids = tokenizer.encode(prefix.rstrip(), add_special_tokens=False) if prefix else []
+        capacity = self.max_tokens - len(prefix_ids) - tokenizer.num_special_tokens_to_add(False)
+        # Both pinned encoders use <s> ... </s>. Generic PreTrainedTokenizerFast
+        # does not implement build_inputs_with_special_tokens; its Rust post-
+        # processor adds them only during encode(). Preserve the exact token IDs
+        # in overflow windows while adding the official boundary tokens explicitly.
+        cls_id, sep_id = tokenizer.cls_token_id, tokenizer.sep_token_id
+        if cls_id is None or sep_id is None or tokenizer.num_special_tokens_to_add(False) != 2:
+            raise ValueError("不支持的本地模型特殊标记配置")
         vectors = []
         # Bound intermediate memory to one chunk, even when importing a large library.
         for text in texts:
-            tokens = tokenizer.encode(
-                text, add_special_tokens=False, truncation=False, verbose=False
+            # Tokenize the complete prefixed string once: SentencePiece whitespace
+            # boundaries can differ when prefix and content are encoded separately.
+            complete = tokenizer.encode(
+                prefix + text, add_special_tokens=False, truncation=False, verbose=False
             )
-            windows = token_windows(tokens, capacity)
+            tokens = complete[len(prefix_ids) :]
+            windows = token_windows(tokens, capacity, self.overlap)
             window_vectors = []
             for start in range(0, len(windows), batch_size):
                 features = [
-                    {"input_ids": tokenizer.build_inputs_with_special_tokens(prefix_ids + window)}
+                    {"input_ids": [cls_id, *prefix_ids, *window, sep_id]}
                     for window in windows[start : start + batch_size]
                 ]
                 batch = tokenizer.pad(features, padding=True, return_tensors="pt")
@@ -174,17 +211,34 @@ class LocalE5Embedder:
         return vectors
 
 
+# Backward compatibility for code importing the original E5-only adapter.
+LocalE5Embedder = LocalEmbedder
+
+
 def main() -> None:
     from .config import Settings
 
-    parser = argparse.ArgumentParser(description="Download the pinned bilingual E5 model once.")
-    parser.parse_args()
+    parser = argparse.ArgumentParser(description="Download and verify a pinned local encoder.")
+    parser.add_argument("--model", choices=["e5", "minilm"])
+    args = parser.parse_args()
     settings = Settings.from_env(Path.cwd())
-    print(f"Downloading {MODEL_ID} to {settings.local_model_path}", flush=True)
+    model_name = args.model or settings.local_model_name
+    path = settings.local_model_path
+    if args.model and args.model != settings.local_model_name:
+        path = (
+            settings.project_root
+            / "data/models"
+            / (
+                "paraphrase-multilingual-MiniLM-L12-v2"
+                if model_name == "minilm"
+                else "multilingual-e5-small"
+            )
+        )
+    print(f"Preparing {model_name} in {path}", flush=True)
     try:
-        download_model(settings.local_model_path)
+        download_model(path, model_name)
         with _LOAD_LOCK:
-            _load_cpu_model(str(settings.local_model_path))
+            _load_cpu_model(str(path))
     except Exception as exc:  # Actionable CLI boundary; preserve partial files for inspection.
         raise SystemExit(
             f"模型准备失败：{exc}\n请检查网络/依赖后重试，或参阅 README 的“本地语义检索”。"
